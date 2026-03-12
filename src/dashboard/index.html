@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swarm Cardinality — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0a0b0f;
+      --surface:  #111318;
+      --border:   #1e2230;
+      --accent:   #5b8cff;
+      --accent2:  #a78bfa;
+      --green:    #34d399;
+      --amber:    #fbbf24;
+      --red:      #f87171;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --mono:     'IBM Plex Mono', monospace;
+      --sans:     'Syne', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      grid-template-columns: 280px 1fr 320px;
+      grid-template-areas:
+        "nav nav nav"
+        "sidebar main panel";
+    }
+
+    /* ── Nav ── */
+    nav {
+      grid-area: nav;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 12px;
+      background: var(--surface);
+    }
+    .logo {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .logo-sub { color: var(--muted); font-size: 12px; font-family: var(--mono); margin-top: 1px; }
+    .nav-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+    .ws-status { display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: var(--mono); color: var(--muted); }
+    .ws-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); transition: background 0.3s; }
+    .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    /* ── Sidebar ── */
+    aside {
+      grid-area: sidebar;
+      border-right: 1px solid var(--border);
+      padding: 20px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      overflow-y: auto;
+    }
+    .section-label {
+      font-size: 10px;
+      font-family: var(--mono);
+      color: var(--muted);
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+    input, select, textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 80px; }
+    select option { background: var(--surface); }
+    .agent-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      padding: 3px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      font-family: var(--mono);
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+      color: var(--muted);
+    }
+    .chip.active { border-color: var(--accent); color: var(--accent); background: rgba(91,140,255,0.1); }
+    .run-btn {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-family: var(--sans);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .run-btn:hover { opacity: 0.9; }
+    .run-btn:active { transform: scale(0.98); }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Main ── */
+    main {
+      grid-area: main;
+      padding: 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .topology-viz {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      min-height: 220px;
+      position: relative;
+    }
+    .viz-title { font-size: 11px; font-family: var(--mono); color: var(--muted); margin-bottom: 12px; }
+    #topo-canvas { width: 100%; height: 180px; }
+
+    .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .metric-label { font-size: 10px; font-family: var(--mono); color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .metric-value { font-size: 26px; font-weight: 800; margin-top: 4px; }
+    .metric-value.accent { color: var(--accent); }
+    .metric-value.green { color: var(--green); }
+    .metric-value.amber { color: var(--amber); }
+    .metric-value.purple { color: var(--accent2); }
+
+    .output-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      flex: 1;
+    }
+    .output-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .output-title { font-size: 11px; font-family: var(--mono); color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+    .output-body {
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      color: #cbd5e1;
+      min-height: 100px;
+    }
+    .placeholder { color: var(--muted); font-style: italic; }
+
+    /* ── Right Panel ── */
+    .panel {
+      grid-area: panel;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .clear-btn {
+      background: none; border: none; color: var(--muted); cursor: pointer;
+      font-size: 11px; font-family: var(--mono);
+    }
+    .clear-btn:hover { color: var(--text); }
+    #event-feed {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .event-item {
+      padding: 8px 16px;
+      font-family: var(--mono);
+      font-size: 11px;
+      border-left: 2px solid transparent;
+      animation: slideIn 0.2s ease;
+      transition: background 0.15s;
+    }
+    .event-item:hover { background: rgba(255,255,255,0.02); }
+    @keyframes slideIn { from { opacity:0; transform:translateX(6px); } to { opacity:1; transform:translateX(0); } }
+    .event-item.start { border-color: var(--accent); }
+    .event-item.done  { border-color: var(--green); }
+    .event-item.msg   { border-color: var(--muted); }
+    .event-item.complete { border-color: var(--accent2); }
+    .event-time { color: var(--muted); }
+    .event-role { color: var(--accent); font-weight: 600; }
+    .event-text { color: var(--text); margin-top: 2px; }
+    .event-preview { color: var(--muted); margin-top: 2px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+
+    /* scrollbars */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div>
+    <div class="logo">swarm-cardinality</div>
+    <div class="logo-sub">by Minh Pham</div>
+  </div>
+  <div class="nav-right">
+    <div class="ws-status">
+      <div class="ws-dot" id="ws-dot"></div>
+      <span id="ws-label">disconnected</span>
+    </div>
+  </div>
+</nav>
+
+<aside>
+  <div>
+    <div class="section-label">Task</div>
+    <div class="form-group">
+      <label>message</label>
+      <textarea id="msg-input" placeholder="What should the swarm work on?">Analyze the tradeoffs between transformer architectures and state-space models for long-context tasks.</textarea>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Agents</div>
+    <div class="agent-chips" id="agent-chips">
+      <div class="chip active" data-role="planner">planner</div>
+      <div class="chip active" data-role="researcher">researcher</div>
+      <div class="chip active" data-role="drafter">drafter</div>
+      <div class="chip active" data-role="critic">critic</div>
+      <div class="chip" data-role="verifier">verifier</div>
+      <div class="chip" data-role="summarizer">summarizer</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-label">Configuration</div>
+    <div class="form-group">
+      <label>topology</label>
+      <select id="topo-select">
+        <option value="auto">auto (recommended)</option>
+        <option value="pipeline" selected>pipeline</option>
+        <option value="hub-and-spoke">hub-and-spoke</option>
+        <option value="random">random</option>
+        <option value="small-world">small-world</option>
+        <option value="full-mesh">full-mesh</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label>execution mode</label>
+      <select id="mode-select">
+        <option value="pipeline" selected>pipeline</option>
+        <option value="parallel">parallel</option>
+        <option value="ensemble">ensemble</option>
+        <option value="graph-walk">graph-walk</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-top:10px">
+      <label>api base url</label>
+      <input id="api-url" value="http://localhost:3000" />
+    </div>
+  </div>
+
+  <button class="run-btn" id="run-btn" onclick="runSwarm()">▶ Run Swarm</button>
+</aside>
+
+<main>
+  <div class="topology-viz">
+    <div class="viz-title">TOPOLOGY GRAPH</div>
+    <canvas id="topo-canvas"></canvas>
+  </div>
+
+  <div class="metrics-row">
+    <div class="metric-card">
+      <div class="metric-label">Agents</div>
+      <div class="metric-value accent" id="m-agents">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total Tokens</div>
+      <div class="metric-value purple" id="m-tokens">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Messages</div>
+      <div class="metric-value amber" id="m-msgs">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Status</div>
+      <div class="metric-value green" id="m-status">idle</div>
+    </div>
+  </div>
+
+  <div class="output-card">
+    <div class="output-header">
+      <div class="output-title">FINAL OUTPUT</div>
+      <div id="job-id-label" style="font-size:10px;font-family:var(--mono);color:var(--muted)"></div>
+    </div>
+    <div class="output-body" id="output-body"><span class="placeholder">Run a swarm to see output here…</span></div>
+  </div>
+</main>
+
+<div class="panel">
+  <div class="panel-header">
+    <span>Live Event Feed</span>
+    <button class="clear-btn" onclick="clearFeed()">clear</button>
+  </div>
+  <div id="event-feed"></div>
+</div>
+
+<script>
+  const BASE = () => document.getElementById('api-url').value.replace(/\/$/, '');
+  let ws = null;
+  let currentJob = null;
+
+  // ── WebSocket ──────────────────────────────────────────────────────────────
+  function connectWS() {
+    const url = BASE().replace(/^http/, 'ws') + '/ws';
+    ws = new WebSocket(url);
+    ws.onopen = () => {
+      document.getElementById('ws-dot').classList.add('connected');
+      document.getElementById('ws-label').textContent = 'connected';
+      if (currentJob) ws.send(JSON.stringify({ type: 'subscribe', jobId: currentJob }));
+    };
+    ws.onclose = () => {
+      document.getElementById('ws-dot').classList.remove('connected');
+      document.getElementById('ws-label').textContent = 'reconnecting…';
+      setTimeout(connectWS, 2000);
+    };
+    ws.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      handleEvent(ev);
+    };
+  }
+  connectWS();
+
+  function handleEvent(ev) {
+    appendEvent(ev);
+    if (ev.type === 'job:complete') {
+      document.getElementById('m-status').textContent = ev.status;
+      document.getElementById('m-status').style.color =
+        ev.status === 'done' ? 'var(--green)' : 'var(--red)';
+      if (ev.status === 'done') pollJob(currentJob);
+    }
+  }
+
+  // ── Run ────────────────────────────────────────────────────────────────────
+  async function runSwarm() {
+    const message = document.getElementById('msg-input').value.trim();
+    const topology = document.getElementById('topo-select').value;
+    const mode = document.getElementById('mode-select').value;
+    const agents = [...document.querySelectorAll('.chip.active')].map(c => c.dataset.role);
+
+    if (!message) return alert('Enter a message');
+    if (!agents.length) return alert('Select at least one agent');
+
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Running…';
+    clearOutput();
+
+    document.getElementById('m-status').textContent = 'running';
+    document.getElementById('m-status').style.color = 'var(--amber)';
+
+    const body = { message, agents, mode };
+    if (topology !== 'auto') body.topology = topology;
+
+    const res = await fetch(BASE() + '/api/swarms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(r => r.json());
+
+    currentJob = res.jobId;
+    document.getElementById('job-id-label').textContent = res.jobId;
+    document.getElementById('m-agents').textContent = agents.length;
+
+    if (ws?.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'subscribe', jobId: currentJob }));
+    }
+
+    btn.disabled = false;
+    btn.textContent = '▶ Run Swarm';
+
+    // Poll fallback
+    pollJob(currentJob);
+  }
+
+  async function pollJob(jobId) {
+    if (!jobId) return;
+    const job = await fetch(BASE() + '/api/swarms/' + jobId).then(r => r.json());
+
+    if (job.stats) {
+      document.getElementById('m-tokens').textContent =
+        (job.stats.totalTokens ?? 0).toLocaleString();
+      document.getElementById('m-msgs').textContent = job.stats.totalMessages ?? 0;
+    }
+
+    if (job.topology?.nodes) drawTopology(job.topology, job.events);
+
+    if (job.status === 'done' && job.result) {
+      const out = job.result.output || job.result.synthesis || JSON.stringify(job.result, null, 2);
+      document.getElementById('output-body').textContent = out;
+      document.getElementById('m-status').textContent = 'done';
+      document.getElementById('m-status').style.color = 'var(--green)';
+    } else if (job.status === 'error') {
+      document.getElementById('output-body').textContent = 'Error: ' + job.error;
+      document.getElementById('m-status').textContent = 'error';
+      document.getElementById('m-status').style.color = 'var(--red)';
+    } else if (job.status === 'running') {
+      setTimeout(() => pollJob(jobId), 1500);
+    }
+  }
+
+  // ── Topology canvas ────────────────────────────────────────────────────────
+  function drawTopology(topology, events = []) {
+    const canvas = document.getElementById('topo-canvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.offsetWidth;
+    const H = 180;
+    canvas.width = W * devicePixelRatio;
+    canvas.height = H * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+
+    ctx.clearRect(0, 0, W, H);
+
+    const nodes = topology.nodes;
+    const edges = topology.edges;
+    const n = nodes.length;
+    if (!n) return;
+
+    // Position nodes in a circle
+    const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.35;
+    const pos = nodes.map((nd, i) => ({
+      ...nd,
+      x: cx + r * Math.cos((2 * Math.PI * i) / n - Math.PI / 2),
+      y: cy + r * Math.sin((2 * Math.PI * i) / n - Math.PI / 2),
+    }));
+    const posMap = Object.fromEntries(pos.map(p => [p.id, p]));
+
+    // Active node IDs from recent events
+    const activeIds = new Set(
+      (events || []).filter(e => e.type === 'agent:start').slice(-2).map(e => e.id)
+    );
+
+    // Draw edges
+    for (const { from, to: tos } of edges) {
+      for (const to of tos) {
+        const a = posMap[from], b = posMap[to];
+        if (!a || !b) continue;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = 'rgba(91,140,255,0.18)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Arrow
+        const angle = Math.atan2(b.y - a.y, b.x - a.x);
+        const ax = b.x - 10 * Math.cos(angle), ay = b.y - 10 * Math.sin(angle);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - 5 * Math.cos(angle - 0.4), ay - 5 * Math.sin(angle - 0.4));
+        ctx.lineTo(ax - 5 * Math.cos(angle + 0.4), ay - 5 * Math.sin(angle + 0.4));
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(91,140,255,0.3)';
+        ctx.fill();
+      }
+    }
+
+    // Draw nodes
+    for (const p of pos) {
+      const isActive = activeIds.has(p.id);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, isActive ? 16 : 12, 0, Math.PI * 2);
+      ctx.fillStyle = isActive ? 'rgba(91,140,255,0.25)' : 'rgba(30,34,48,0.9)';
+      ctx.fill();
+      ctx.strokeStyle = isActive ? '#5b8cff' : '#2d3347';
+      ctx.lineWidth = isActive ? 2 : 1;
+      ctx.stroke();
+
+      ctx.fillStyle = isActive ? '#5b8cff' : '#64748b';
+      ctx.font = `${isActive ? '600' : '400'} 10px IBM Plex Mono`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(p.role.slice(0, 5), p.x, p.y);
+    }
+  }
+
+  // Draw initial empty canvas
+  window.addEventListener('load', () => drawTopology({ nodes: [], edges: [] }));
+
+  // ── Event feed ─────────────────────────────────────────────────────────────
+  function appendEvent(ev) {
+    const feed = document.getElementById('event-feed');
+    const div = document.createElement('div');
+    const t = new Date().toLocaleTimeString('en', { hour12: false });
+
+    let cls = 'event-item msg';
+    let html = '';
+
+    if (ev.type === 'agent:start') {
+      cls = 'event-item start';
+      html = `<div><span class="event-time">${t}</span> <span class="event-role">${ev.role}</span> <span style="color:var(--muted)">started</span></div>`;
+    } else if (ev.type === 'agent:done') {
+      cls = 'event-item done';
+      html = `<div><span class="event-time">${t}</span> <span class="event-role">${ev.role}</span> <span style="color:var(--green)">✓ done</span></div>
+              <div class="event-preview">${(ev.outputPreview || '').replace(/</g,'&lt;')}</div>`;
+    } else if (ev.type === 'message') {
+      cls = 'event-item msg';
+      html = `<div><span class="event-time">${t}</span> msg <span style="color:var(--muted)">${ev.from?.slice(0,8)}→${ev.to?.slice(0,8)}</span></div>`;
+    } else if (ev.type === 'job:complete') {
+      cls = 'event-item complete';
+      html = `<div><span class="event-time">${t}</span> <span style="color:var(--accent2)">job complete</span> — ${ev.status}</div>`;
+    } else {
+      html = `<div class="event-time">${t}</div><div class="event-text">${ev.type}</div>`;
+    }
+
+    div.className = cls;
+    div.innerHTML = html;
+    feed.appendChild(div);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function clearFeed() { document.getElementById('event-feed').innerHTML = ''; }
+  function clearOutput() {
+    document.getElementById('output-body').innerHTML = '<span class="placeholder">Running…</span>';
+  }
+
+  // ── Chip toggle ────────────────────────────────────────────────────────────
+  document.getElementById('agent-chips').addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (chip) chip.classList.toggle('active');
+  });
+</script>
+</body>
+</html>
