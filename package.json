@@ -1,0 +1,30 @@
+{
+  "name": "swarm-cardinality",
+  "version": "1.0.0",
+  "description": "Multi-agent orchestration framework — cardinality as a first-class scaling knob",
+  "author": "Minh Pham",
+  "license": "MIT",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/api/server.js",
+    "dev": "node --watch src/api/server.js",
+    "dashboard": "node src/dashboard/serve.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "example:pipeline": "node examples/pipeline.js",
+    "example:search": "node examples/parallel_search.js",
+    "example:topology": "node examples/topology_search.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0",
+    "p-limit": "^5.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
